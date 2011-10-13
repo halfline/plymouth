@@ -121,7 +121,8 @@ typedef struct
 } state_t;
 
 static ply_boot_splash_t *start_boot_splash (state_t    *state,
-                                             const char *theme_path);
+                                             const char *theme_path,
+                                             bool        fall_back_if_neccessary);
 
 static void add_display_and_keyboard_for_terminal (state_t    *state,
                                                    const char *tty_name);
@@ -198,7 +199,8 @@ show_detailed_splash (state_t *state)
 
   ply_trace ("Showing detailed splash screen");
   state->boot_splash = start_boot_splash (state,
-                                          PLYMOUTH_THEME_PATH "details/details.plymouth");
+                                          PLYMOUTH_THEME_PATH "details/details.plymouth",
+                                          true);
 
   if (state->boot_splash == NULL)
     {
@@ -303,7 +305,8 @@ show_default_splash (state_t *state)
     {
       ply_trace ("Trying override splash at '%s'", state->override_splash_path);
       state->boot_splash = start_boot_splash (state,
-                                              state->override_splash_path);
+                                              state->override_splash_path,
+                                              false);
     }
 
   find_system_default_splash (state);
@@ -312,7 +315,8 @@ show_default_splash (state_t *state)
     {
       ply_trace ("Trying system default splash");
       state->boot_splash = start_boot_splash (state,
-                                              state->system_default_splash_path);
+                                              state->system_default_splash_path,
+                                              false);
     }
 
   find_distribution_default_splash (state);
@@ -321,14 +325,16 @@ show_default_splash (state_t *state)
     {
       ply_trace ("Trying distribution default splash");
       state->boot_splash = start_boot_splash (state,
-                                              state->distribution_default_splash_path);
+                                              state->distribution_default_splash_path,
+                                              false);
     }
 
   if (state->boot_splash == NULL)
     {
       ply_trace ("Trying old scheme for default splash");
       state->boot_splash = start_boot_splash (state,
-                                              PLYMOUTH_THEME_PATH "default.plymouth");
+                                              PLYMOUTH_THEME_PATH "default.plymouth",
+                                              false);
     }
 
   if (state->boot_splash == NULL)
@@ -336,7 +342,17 @@ show_default_splash (state_t *state)
       ply_trace ("Could not start default splash screen,"
                  "showing text splash screen");
       state->boot_splash = start_boot_splash (state,
-                                              PLYMOUTH_THEME_PATH "text/text.plymouth");
+                                              PLYMOUTH_THEME_PATH "text/text.plymouth",
+                                              false);
+    }
+
+  if (state->boot_splash == NULL)
+    {
+      ply_trace ("Could not start text splash screen,"
+                 "showing built-in fallback");
+      state->boot_splash = start_boot_splash (state,
+                                              PLYMOUTH_THEME_PATH "text/text.plymouth",
+                                              true);
     }
 
   if (state->boot_splash == NULL)
@@ -1406,10 +1422,12 @@ add_displays_and_keyboard_to_boot_splash (state_t           *state,
 
 static ply_boot_splash_t *
 start_boot_splash (state_t    *state,
-                   const char *theme_path)
+                   const char *theme_path,
+                   bool        fall_back_if_neccessary)
 {
   ply_boot_splash_t *splash;
   ply_boot_splash_mode_t splash_mode;
+  bool is_loaded;
 
   ply_trace ("Loading boot splash theme '%s'",
              theme_path);
@@ -1419,7 +1437,16 @@ start_boot_splash (state_t    *state,
                                 state->boot_buffer,
                                 state->terminal);
 
-  if (!ply_boot_splash_load (splash))
+  is_loaded = ply_boot_splash_load (splash);
+  if (!is_loaded && fall_back_if_neccessary)
+    {
+      ply_trace ("Splash couldn't be loaded: %m");
+
+      ply_trace ("Loading built in splash");
+      is_loaded = ply_boot_splash_load_built_in (splash);
+    }
+
+  if (!is_loaded)
     {
       ply_save_errno ();
       ply_boot_splash_free (splash);

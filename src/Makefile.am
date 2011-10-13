@@ -12,6 +12,7 @@ plymouthdbindir = $(plymouthdaemondir)
 plymouthdbin_PROGRAMS = plymouthd
 
 plymouthd_CFLAGS = $(PLYMOUTH_CFLAGS)                                         \
+		   -rdynamic                                                  \
 		   -DPLYMOUTH_PLUGIN_PATH=\"$(PLYMOUTH_PLUGIN_PATH)\"         \
 		   -DPLYMOUTH_THEME_PATH=\"$(PLYMOUTH_THEME_PATH)/\"          \
 		   -DPLYMOUTH_POLICY_DIR=\"$(PLYMOUTH_POLICY_DIR)/\"          \
@@ -21,6 +22,7 @@ plymouthd_SOURCES =                                                            \
                    ply-boot-protocol.h                                        \
                    ply-boot-server.h                                          \
                    ply-boot-server.c                                          \
+                   plugins/splash/details/plugin.c                  \
                    main.c
 
 plymouthdrundir = $(localstatedir)/run/plymouth
