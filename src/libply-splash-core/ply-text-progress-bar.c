@@ -119,35 +119,44 @@ get_os_string (void)
 
   if (strcmp (RELEASE_FILE, "/etc/os-release") == 0)
     {
-      char key[] = "PRETTY_NAME=";
+      const char *keys[] = { "REDHAT_BUGZILLA_PRODUCT=", "PRETTY_NAME=", "NAME=", NULL };
+      int i;
 
-      for (pos = strstr (buf, key);
-           pos != NULL;
-           pos = strstr (pos, key))
+      for (i = 0; keys[i] != NULL; i++)
         {
-          if (pos == buf || pos[-1] == '\n')
-            break;
-        }
+          const char *key;
 
-      if (pos != NULL)
-        {
-          pos += strlen (key);
-          pos2 = strstr (pos, "\n");
+          key = keys[i];
 
-          if (pos2 != NULL)
-            *pos2 = '\0';
-          else
-            pos2 = pos + strlen(pos) - 1;
-
-          if ((*pos == '\"' && pos2[-1] == '\"') ||
-              (*pos == '\'' && pos2[-1] == '\''))
+          for (pos = strstr (buf, key);
+               pos != NULL;
+               pos = strstr (pos, key))
             {
-              pos++;
-              pos2--;
-
-              *pos2 = '\0';
+              if (pos == buf || pos[-1] == '\n')
+                break;
             }
-          asprintf (&os_string, " %s", pos);
+
+          if (pos != NULL)
+            {
+              pos += strlen (key);
+              pos2 = strstr (pos, "\n");
+
+              if (pos2 != NULL)
+                *pos2 = '\0';
+              else
+                pos2 = pos + strlen(pos) - 1;
+
+              if ((*pos == '\"' && pos2[-1] == '\"') ||
+                  (*pos == '\'' && pos2[-1] == '\''))
+                {
+                  pos++;
+                  pos2--;
+
+                  *pos2 = '\0';
+                }
+              asprintf (&os_string, " %s", pos);
+              goto out;
+            }
         }
       goto out;
     }
