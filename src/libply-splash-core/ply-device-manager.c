@@ -472,6 +472,10 @@ get_terminal (ply_device_manager_t *manager,
       strcmp (full_name, ply_terminal_get_name (manager->local_console_terminal)) == 0)
     {
       terminal = manager->local_console_terminal;
+
+      ply_hashtable_insert (manager->terminals,
+                            (void *) ply_terminal_get_name (terminal),
+                            terminal);
       goto done;
     }
 
@@ -501,9 +505,6 @@ ply_device_manager_new (const char                 *default_tty,
   manager->loop = NULL;
   manager->terminals = ply_hashtable_new (ply_hashtable_string_hash, ply_hashtable_string_compare);
   manager->local_console_terminal = ply_terminal_new (default_tty);
-  ply_hashtable_insert (manager->terminals,
-                        (void *) ply_terminal_get_name (manager->local_console_terminal),
-                        manager->local_console_terminal);
   manager->seats = ply_list_new ();
   manager->flags = flags;
 
