@@ -442,7 +442,6 @@ free_terminal (char                 *device,
 {
   ply_hashtable_remove (manager->terminals, device);
 
-  ply_terminal_close (terminal);
   ply_terminal_free (terminal);
 }
 
