@@ -406,7 +406,15 @@ on_udev_event (ply_device_manager_t *manager)
       if (strcmp (subsystem, SUBSYSTEM_DRM) == 0 ||
           coldplug_complete)
         {
-          create_seat_for_udev_device (manager, device);
+          ply_list_t *local_pixel_displays = NULL;
+
+          if (manager->local_console_seat != NULL)
+            local_pixel_displays = ply_seat_get_pixel_displays (manager->local_console_seat);
+
+          if (coldplug_complete && manager->local_console_seat != NULL && local_pixel_displays == NULL)
+            ply_trace ("ignoring since we're already using text splash for local console");
+          else
+            create_seat_for_udev_device (manager, device);
         }
       else
         {
