@@ -49,7 +49,6 @@ struct _ply_seat
   ply_list_t *text_displays;
   ply_list_t *pixel_displays;
 
-  uint32_t renderer_active : 1;
   uint32_t keyboard_active : 1;
 };
 
@@ -135,16 +134,12 @@ ply_seat_open (ply_seat_t          *seat,
           ply_trace ("could not open renderer for %s", device);
           ply_renderer_free (renderer);
 
-          seat->renderer = NULL;
-          seat->renderer_active = false;
-
           if (renderer_type != PLY_RENDERER_TYPE_AUTO)
             return false;
         }
       else
         {
           seat->renderer = renderer;
-          seat->renderer_active = true;
         }
     }
 
@@ -206,11 +201,6 @@ ply_seat_deactivate_keyboard (ply_seat_t *seat)
 void
 ply_seat_deactivate_renderer (ply_seat_t *seat)
 {
-  if (!seat->renderer_active)
-    return;
-
-  seat->renderer_active = false;
-
   if (seat->renderer == NULL)
     return;
 
@@ -236,16 +226,11 @@ ply_seat_activate_keyboard (ply_seat_t *seat)
 void
 ply_seat_activate_renderer (ply_seat_t *seat)
 {
-  if (seat->renderer_active)
-    return;
-
   if (seat->renderer == NULL)
     return;
 
   ply_trace ("activating renderer");
   ply_renderer_activate (seat->renderer);
-
-  seat->renderer_active = true;
 }
 
 void
