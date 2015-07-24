@@ -1113,6 +1113,9 @@ load_devices (state_t                    *state,
                                     (ply_text_display_removed_handler_t)
                                     on_text_display_removed,
                                     state);
+
+  if (ply_device_manager_has_serial_consoles (state->device_manager))
+    state->should_force_details = true;
 }
 
 static void
