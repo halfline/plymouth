@@ -410,16 +410,18 @@ ply_boot_splash_free (ply_boot_splash_t *splash)
                                              splash);
     }
 
-  ply_boot_splash_unset_keyboard (splash);
-
-  remove_pixel_displays (splash);
-  ply_list_free (splash->pixel_displays);
-
-  remove_text_displays (splash);
-  ply_list_free (splash->text_displays);
-
   if (splash->module_handle != NULL)
-    ply_boot_splash_unload (splash);
+    {
+      ply_boot_splash_unset_keyboard (splash);
+
+      remove_pixel_displays (splash);
+      ply_list_free (splash->pixel_displays);
+
+      remove_text_displays (splash);
+      ply_list_free (splash->text_displays);
+
+      ply_boot_splash_unload (splash);
+    }
 
   if (splash->idle_trigger != NULL)
     ply_trigger_free (splash->idle_trigger);
