@@ -182,6 +182,8 @@ view_free (view_t *view)
   ply_label_free (view->label);
   ply_label_free (view->message_label);
 
+  ply_pixel_display_set_draw_handler (view->display, NULL, NULL);
+
   if (view->background_image != NULL)
     ply_image_free (view->background_image);
 
@@ -1020,7 +1022,6 @@ remove_pixel_display (ply_boot_splash_plugin_t *plugin,
       if (view->display == display)
         {
 
-          ply_pixel_display_set_draw_handler (view->display, NULL, NULL);
           view_free (view);
           ply_list_remove_node (plugin->views, node);
           return;
