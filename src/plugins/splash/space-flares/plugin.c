@@ -237,6 +237,8 @@ view_free (view_t *view)
   view_free_sprites (view);
   ply_list_free (view->sprites);
 
+  ply_pixel_display_set_draw_handler (view->display, NULL, NULL);
+
   ply_image_free (view->scaled_background_image);
 
   free (view);
@@ -1455,8 +1457,6 @@ remove_pixel_display (ply_boot_splash_plugin_t *plugin,
 
       if (view->display == display)
         {
-
-          ply_pixel_display_set_draw_handler (view->display, NULL, NULL);
           view_free (view);
           ply_list_remove_node (plugin->views, node);
           return;
