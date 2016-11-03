@@ -84,7 +84,8 @@ typedef struct
   ply_boot_server_t *boot_server;
   ply_list_t *pixel_displays;
   ply_list_t *text_displays;
-  ply_keyboard_t *keyboard;
+  ply_list_t *keyboards;
+  ply_keyboard_t *legacy_keyboard; /* legacy for script plugin */
   ply_boot_splash_t *boot_splash;
   ply_terminal_session_t *session;
   ply_buffer_t *boot_buffer;
@@ -96,7 +97,7 @@ typedef struct
   ply_command_parser_t *command_parser;
   ply_mode_t mode;
   ply_renderer_t *renderer;
-  ply_terminal_t *terminal;
+  ply_terminal_t *local_console_terminal;
 
   ply_trigger_t *deactivate_trigger;
   ply_trigger_t *quit_trigger;
@@ -125,8 +126,8 @@ static ply_boot_splash_t *start_boot_splash (state_t    *state,
                                              const char *theme_path,
                                              bool        fall_back_if_neccessary);
 
-static void add_display_and_keyboard_for_terminal (state_t    *state,
-                                                   const char *tty_name);
+static void add_display_and_keyboard_for_terminal (state_t        *state,
+                                                   ply_terminal_t *terminal);
 
 static void add_default_displays_and_keyboard (state_t *state);
 
@@ -702,11 +703,22 @@ remove_displays_and_keyboard (state_t *state)
       node = next_node;
     }
 
-  if (state->keyboard != NULL)
+  state->legacy_keyboard = NULL;
+
+  node = ply_list_get_first_node (state->keyboards);
+  while (node != NULL)
     {
+      ply_list_node_t *next_node;
+      ply_keyboard_t *keyboard;
+
       ply_trace ("removing keyboard");
-      ply_keyboard_free (state->keyboard);
-      state->keyboard = NULL;
+      next_node = ply_list_get_next_node (state->keyboards, node);
+      keyboard = ply_list_node_get_data (node);
+      ply_keyboard_free (keyboard);
+
+      ply_list_remove_node (state->keyboards, node);
+
+      node = next_node;
     }
 }
 
@@ -757,9 +769,62 @@ on_show_splash (state_t *state)
   show_messages (state);
 }
 
+static ply_list_t *
+get_tracked_terminals (state_t *state)
+{
+  ply_list_t *terminals;
+  ply_list_node_t *node;
+
+  terminals = ply_list_new ();
+
+  node = ply_list_get_first_node (state->text_displays);
+  while (node != NULL)
+    {
+      ply_list_node_t *next_node;
+      ply_text_display_t *display;
+      ply_terminal_t *terminal;
+
+      next_node = ply_list_get_next_node (state->text_displays, node);
+      display = ply_list_node_get_data (node);
+      terminal = ply_text_display_get_terminal (display);
+
+      ply_list_append_data (terminals, terminal);
+
+      node = next_node;
+    }
+
+  return terminals;
+}
+
+static void
+free_terminals (state_t    *state,
+                ply_list_t *terminals)
+{
+  ply_list_node_t *node;
+  node = ply_list_get_first_node (terminals);
+  while (node != NULL)
+    {
+      ply_list_node_t *next_node;
+      ply_terminal_t *terminal;
+
+      next_node = ply_list_get_next_node (state->text_displays, node);
+      terminal = ply_list_node_get_data (node);
+
+      ply_terminal_close (terminal);
+      ply_terminal_free (terminal);
+      ply_list_remove_node (terminals, node);
+
+      node = next_node;
+    }
+
+  ply_list_free (terminals);
+}
+
 static void
 quit_splash (state_t *state)
 {
+  ply_list_t *terminals;
+
   ply_trace ("quiting splash");
   if (state->boot_splash != NULL)
     {
@@ -767,6 +832,8 @@ quit_splash (state_t *state)
       ply_boot_splash_free (state->boot_splash);
       state->boot_splash = NULL;
     }
+
+  terminals = get_tracked_terminals (state);
 
   ply_trace ("removing displays and keyboard");
   remove_displays_and_keyboard (state);
@@ -778,17 +845,16 @@ quit_splash (state_t *state)
       state->renderer = NULL;
     }
 
-  if (state->terminal != NULL)
+  if (state->local_console_terminal != NULL)
     {
       if (!state->should_retain_splash)
         {
           ply_trace ("Not retaining splash, so deallocating VT");
-          ply_terminal_deactivate_vt (state->terminal);
+          ply_terminal_deactivate_vt (state->local_console_terminal);
         }
-      ply_terminal_close (state->terminal);
-      ply_terminal_free (state->terminal);
-      state->terminal = NULL;
+      state->local_console_terminal = NULL;
     }
+  free_terminals (state, terminals);
 
   if (state->session != NULL)
     {
@@ -888,12 +954,12 @@ deactivate_splash (state_t *state)
       state->is_attached = false;
     }
 
-  if (state->terminal != NULL)
+  if (state->local_console_terminal != NULL)
     {
       ply_trace ("deactivating terminal");
-      ply_terminal_stop_watching_for_vt_changes (state->terminal);
-      ply_terminal_set_buffered_input (state->terminal);
-      ply_terminal_ignore_mode_changes (state->terminal, true);
+      ply_terminal_stop_watching_for_vt_changes (state->local_console_terminal);
+      ply_terminal_set_buffered_input (state->local_console_terminal);
+      ply_terminal_ignore_mode_changes (state->local_console_terminal, true);
     }
 
   state->is_inactive = true;
@@ -933,6 +999,47 @@ on_boot_splash_idle (state_t *state)
     }
 }
 
+static void
+stop_watching_for_keyboard_input (state_t *state)
+{
+  ply_list_node_t *node;
+
+  node = ply_list_get_first_node (state->keyboards);
+  while (node != NULL)
+    {
+      ply_keyboard_t *keyboard;
+      ply_list_node_t *next_node;
+
+      keyboard = ply_list_node_get_data (node);
+      next_node = ply_list_get_next_node (state->keyboards, node);
+
+      ply_trace ("deactivating keyboard");
+      ply_keyboard_stop_watching_for_input (keyboard);
+
+      node = next_node;
+    }
+}
+
+static void
+watch_for_keyboard_input (state_t *state)
+{
+  ply_list_node_t *node;
+
+  node = ply_list_get_first_node (state->keyboards);
+  while (node != NULL)
+    {
+      ply_keyboard_t *keyboard;
+      ply_list_node_t *next_node;
+
+      keyboard = ply_list_node_get_data (node);
+      next_node = ply_list_get_next_node (state->keyboards, node);
+
+      ply_trace ("watching for input on keyboard ");
+      ply_keyboard_watch_for_input (keyboard);
+
+      node = next_node;
+    }
+}
 
 static void
 on_deactivate (state_t       *state,
@@ -950,12 +1057,7 @@ on_deactivate (state_t       *state,
   state->deactivate_trigger = deactivate_trigger;
 
   ply_trace ("deactivating");
-
-  if (state->keyboard != NULL)
-    {
-      ply_trace ("deactivating keyboard");
-      ply_keyboard_stop_watching_for_input (state->keyboard);
-    }
+  stop_watching_for_keyboard_input (state);
 
   if (state->boot_splash != NULL)
     {
@@ -977,11 +1079,11 @@ on_reactivate (state_t *state)
   if (!state->is_inactive)
     return;
 
-  if (state->terminal != NULL)
+  if (state->local_console_terminal != NULL)
     {
-      ply_terminal_watch_for_vt_changes (state->terminal);
-      ply_terminal_set_unbuffered_input (state->terminal);
-      ply_terminal_ignore_mode_changes (state->terminal, false);
+      ply_terminal_watch_for_vt_changes (state->local_console_terminal);
+      ply_terminal_set_unbuffered_input (state->local_console_terminal);
+      ply_terminal_ignore_mode_changes (state->local_console_terminal, false);
     }
 
   if ((state->session != NULL) && state->should_be_attached)
@@ -990,11 +1092,7 @@ on_reactivate (state_t *state)
       attach_to_running_session (state);
     }
 
-  if (state->keyboard != NULL)
-    {
-      ply_trace ("activating keyboard");
-      ply_keyboard_watch_for_input (state->keyboard);
-    }
+  watch_for_keyboard_input (state);
 
   if (state->renderer != NULL)
     {
@@ -1032,11 +1130,7 @@ on_quit (state_t       *state,
   if (state->session != NULL)
     ply_terminal_session_close_log (state->session);
 
-  if (state->keyboard != NULL)
-    {
-      ply_trace ("deactivating keyboard");
-      ply_keyboard_stop_watching_for_input (state->keyboard);
-    }
+  stop_watching_for_keyboard_input (state);
 
   ply_trace ("unloading splash");
   if (state->is_inactive && !retain_splash)
@@ -1060,8 +1154,8 @@ on_quit (state_t       *state,
 static bool
 on_has_active_vt (state_t *state)
 {
-  if (state->terminal != NULL)
-    return ply_terminal_is_active (state->terminal);
+  if (state->local_console_terminal != NULL)
+    return ply_terminal_is_active (state->local_console_terminal);
   else
     return false;
 }
@@ -1275,10 +1369,13 @@ on_enter (state_t                  *state,
 }
 
 static void
-set_keyboard (state_t        *state,
+add_keyboard (state_t        *state,
               ply_keyboard_t *keyboard)
 {
-  state->keyboard = keyboard;
+  ply_list_append_data (state->keyboards, keyboard);
+
+  if (state->legacy_keyboard == NULL)
+    state->legacy_keyboard = keyboard;
 
   ply_keyboard_add_escape_handler (keyboard, (ply_keyboard_escape_handler_t)
                                    on_escape_pressed, state);
@@ -1296,21 +1393,17 @@ set_keyboard (state_t        *state,
                                   on_enter, state);
 }
 static void
-add_display_and_keyboard_for_terminal (state_t    *state,
-                                       const char *tty_name)
+add_display_and_keyboard_for_terminal (state_t        *state,
+                                       ply_terminal_t *terminal)
 {
   ply_text_display_t *display;
   ply_keyboard_t *keyboard;
 
-  ply_trace ("adding display and keyboard for %s", tty_name);
-
-  state->terminal = ply_terminal_new (tty_name);
-
-  keyboard = ply_keyboard_new_for_terminal (state->terminal);
-  display = ply_text_display_new (state->terminal);
+  keyboard = ply_keyboard_new_for_terminal (terminal);
+  display = ply_text_display_new (terminal);
 
   ply_list_append_data (state->text_displays, display);
-  set_keyboard (state, keyboard);
+  add_keyboard (state, keyboard);
 }
 
 static void
@@ -1349,33 +1442,30 @@ add_default_displays_and_keyboard (state_t *state)
 {
   ply_renderer_t *renderer;
   ply_keyboard_t *keyboard;
-  ply_terminal_t *terminal;
   ply_text_display_t *text_display;
 
   ply_trace ("adding default displays and keyboard");
 
-  terminal = ply_terminal_new (state->default_tty);
+  state->local_console_terminal = ply_terminal_new (state->default_tty);
 
-  renderer = ply_renderer_new (NULL, terminal);
+  renderer = ply_renderer_new (NULL, state->local_console_terminal);
 
   if (!ply_renderer_open (renderer))
     {
       ply_trace ("could not open renderer /dev/fb");
       ply_renderer_free (renderer);
-      ply_terminal_free (terminal);
 
-      add_display_and_keyboard_for_terminal (state, state->default_tty);
+      ply_trace ("adding text display and keyboard for %s", state->default_tty);
+      add_display_and_keyboard_for_terminal (state, state->local_console_terminal);
       return;
     }
 
-  state->terminal = terminal;
-
   keyboard = ply_keyboard_new_for_renderer (renderer);
-  set_keyboard (state, keyboard);
+  add_keyboard (state, keyboard);
 
   add_pixel_displays_from_renderer (state, renderer);
 
-  text_display = ply_text_display_new (state->terminal);
+  text_display = ply_text_display_new (state->local_console_terminal);
   ply_list_append_data (state->text_displays, text_display);
 
   state->renderer = renderer;
@@ -1388,8 +1478,8 @@ add_displays_and_keyboard_to_boot_splash (state_t           *state,
   ply_list_node_t *node;
 
   ply_trace ("setting keyboard on boot splash");
-  if (state->keyboard != NULL)
-    ply_boot_splash_set_keyboard (splash, state->keyboard);
+  if (state->legacy_keyboard != NULL)
+    ply_boot_splash_set_keyboard (splash, state->legacy_keyboard);
 
   node = ply_list_get_first_node (state->pixel_displays);
   while (node != NULL)
@@ -1435,8 +1525,7 @@ start_boot_splash (state_t    *state,
 
   splash = ply_boot_splash_new (theme_path,
                                 PLYMOUTH_PLUGIN_PATH,
-                                state->boot_buffer,
-                                state->terminal);
+                                state->boot_buffer);
 
   is_loaded = ply_boot_splash_load (splash);
   if (!is_loaded && fall_back_if_neccessary)
@@ -1478,7 +1567,7 @@ start_boot_splash (state_t    *state,
       return NULL;
     }
 
-  ply_keyboard_watch_for_input (state->keyboard);
+  watch_for_keyboard_input (state);
 
   update_display (state);
   return splash;
@@ -1641,7 +1730,15 @@ add_display_and_keyboard_for_console (const char *console,
                                       const char *null,
                                       state_t    *state)
 {
-  add_display_and_keyboard_for_terminal (state, console);
+  ply_terminal_t *terminal;
+
+  terminal = ply_terminal_new (console);
+
+  if (strcmp (console, state->default_tty) == 0)
+    state->local_console_terminal = terminal;
+
+  ply_trace ("adding display and keyboard for console %s", console);
+  add_display_and_keyboard_for_terminal (state, terminal);
 }
 
 static void
@@ -1664,6 +1761,8 @@ check_for_consoles (state_t    *state,
   while ((console_key = strstr (remaining_command_line, " console=")) != NULL)
     {
       char *end;
+      size_t console_length;
+      char *console_device;
 
       state->should_force_details = true;
 
@@ -1676,20 +1775,29 @@ check_for_consoles (state_t    *state,
       if (end != NULL)
         *end = '\0';
 
+      console_length = strlen (console);
+
       if (strcmp (console, "tty0") == 0 || strcmp (console, "/dev/tty0") == 0)
         {
           free (console);
           console = strdup (default_tty);
-          ply_trace ("serial console tty0 found, assuming %s!", console);
+        }
+
+      if (strncmp (console, "/dev/", strlen ("/dev/")) == 0)
+        {
+          console_device = console;
+          console = NULL;
         }
       else
         {
-          ply_trace ("serial console %s found!", console);
+          asprintf (&console_device, "/dev/%s", console);
+          free (console);
+          console = NULL;
         }
 
-      ply_hashtable_insert (consoles, console, NULL);
-
-      remaining_command_line += strlen (console);
+      ply_trace ("console %s found!", console_device);
+      ply_hashtable_insert (consoles, console_device, NULL);
+      remaining_command_line += console_length;
     }
 
   free (state->kernel_console_tty);
@@ -1783,7 +1891,8 @@ initialize_environment (state_t *state)
   state->pixel_displays = ply_list_new ();
   state->text_displays = ply_list_new ();
   state->messages = ply_list_new ();
-  state->keyboard = NULL;
+  state->keyboards = ply_list_new ();
+  state->legacy_keyboard = NULL;
 
   if (!state->default_tty)
     {
@@ -1862,7 +1971,7 @@ on_crash (int signum)
     term_attributes.c_oflag |= OPOST;
     term_attributes.c_lflag |= ECHO | ICANON | ISIG | IEXTEN;
 
-    tcsetattr (fd, TCSAFLUSH, &term_attributes);
+    tcsetattr (fd, TCSANOW, &term_attributes);
 
     close (fd);
 
