@@ -139,6 +139,8 @@ ply_hashtable_insert_internal (ply_hashtable_t *hashtable,
           (int) hashtable->live_node_count);
 #endif /* PLY_HASHTABLE_ENABLE_TEST */
 
+  ply_hashtable_remove (hashtable, key);
+
   hash_index = hashtable->hash_func (key);
   hash_index &= hashtable->total_node_count - 1;
 
