@@ -11,17 +11,22 @@ plugin_LTLIBRARIES = drm.la
 
 drm_la_CFLAGS = $(PLYMOUTH_CFLAGS) $(DRM_CFLAGS)
 
+if PLYMOUTH_INTEL
+INTEL_SOURCES = \
+		 $(srcdir)/ply-renderer-i915-driver.h                         \
+		 $(srcdir)/ply-renderer-i915-driver.c
+endif
+
 drm_la_LDFLAGS = -module -avoid-version -export-dynamic
 drm_la_LIBADD = $(PLYMOUTH_LIBS) $(DRM_LIBS)                                  \
                          ../../../libply/libply.la                            \
                          ../../../libply-splash-core/libply-splash-core.la
 drm_la_SOURCES = $(srcdir)/plugin.c                                           \
 		 $(srcdir)/ply-renderer-driver.h                              \
-		 $(srcdir)/ply-renderer-i915-driver.h                         \
-		 $(srcdir)/ply-renderer-i915-driver.c                         \
 		 $(srcdir)/ply-renderer-radeon-driver.h                       \
 		 $(srcdir)/ply-renderer-radeon-driver.c                       \
 		 $(srcdir)/ply-renderer-nouveau-driver.h                      \
-		 $(srcdir)/ply-renderer-nouveau-driver.c
+		 $(srcdir)/ply-renderer-nouveau-driver.c                      \
+		 $(INTEL_SOURCES)
 
 MAINTAINERCLEANFILES = Makefile.in

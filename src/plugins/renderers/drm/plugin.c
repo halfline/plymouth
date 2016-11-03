@@ -56,10 +56,16 @@
 #include "ply-region.h"
 #include "ply-terminal.h"
 
+#if defined(__i686__) || defined(__x86_64__) || defined(__ia64__)
+#define PLYMOUTH_INTEL
+#endif
+
 #include "ply-renderer.h"
 #include "ply-renderer-plugin.h"
 #include "ply-renderer-driver.h"
+#ifdef PLYMOUTH_INTEL
 #include "ply-renderer-i915-driver.h"
+#endif
 #include "ply-renderer-radeon-driver.h"
 #include "ply-renderer-nouveau-driver.h"
 
@@ -498,12 +504,15 @@ load_driver (ply_renderer_backend_t *backend)
       return false;
     }
 
+#ifdef PLYMOUTH_INTEL
   if (strcmp (driver_name, "i915") == 0)
     {
       backend->driver_interface = ply_renderer_i915_driver_get_interface ();
       backend->driver_supports_mapping_console = true;
     }
-  else if (strcmp (driver_name, "radeon") == 0)
+  else 
+#endif
+  if (strcmp (driver_name, "radeon") == 0)
     {
       backend->driver_interface = ply_renderer_radeon_driver_get_interface ();
       backend->driver_supports_mapping_console = false;

@@ -56,16 +56,24 @@ PKG_CHECK_MODULES(GTK, [gtk+-2.0 >= 2.12.0 ])
 AC_SUBST(GTK_CFLAGS)
 AC_SUBST(GTK_LIBS)
 
-PKG_CHECK_MODULES(DRM, [libdrm libdrm_intel libdrm_radeon libdrm_nouveau])
+case $(arch) in
+    i686* | x86_64* | ia64*)
+	INTEL_MODULES=libdrm_intel
+	;;
+    *)
+	;;
+esac
+AM_CONDITIONAL(PLYMOUTH_INTEL, [test "x$INTEL_MODULES" = xlibdrm_intel])
+
+PKG_CHECK_MODULES(DRM, [libdrm $INTEL_MODULES libdrm_radeon libdrm_nouveau])
 
 OLD_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS $DRM_CFLAGS"
-AC_MSG_CHECKING([if i915_drm.h, radeon_drm.h and nouveau_drm.h are in include path])
+AC_MSG_CHECKING([if radeon_drm.h and nouveau_drm.h are in include path])
 AC_COMPILE_IFELSE(AC_LANG_PROGRAM(
 [[
   #include <stdint.h>
   #include <stdlib.h>
-  #include "i915_drm.h"
   #include "radeon_drm.h"
   #include "nouveau_drm.h"
 ]],[[]]),[found_drm_kernel_headers=yes],[found_drm_kernel_headers=no])
@@ -82,7 +90,6 @@ else
   [[
     #include <stdint.h>
     #include <stdlib.h>
-    #include "i915_drm.h"
     #include "radeon_drm.h"
     #include "nouveau_drm.h"
   ]],[[]]),[found_drm_kernel_headers=yes],[found_drm_kernel_headers=no])
